@@ -1,0 +1,58 @@
+"""Regression tests that keep CLI documentation aligned with Click metadata."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from actionscope.cli import main
+
+CLI_REFERENCE = Path(__file__).resolve().parents[1] / "docs" / "cli-reference.md"
+SCAN_HEADING = "## `actionscope scan [PATH] [OPTIONS]`"
+SCAN_OPTIONS_HEADING = "### Options"
+
+
+def _scan_command():
+    command = main.commands.get("scan")
+    assert command is not None, "scan command is missing from actionscope.cli.main"
+    return command
+
+
+def _public_scan_long_options() -> list[str]:
+    names: list[str] = []
+    for param in _scan_command().params:
+        if getattr(param, "hidden", False):
+            continue
+        long_opts = [
+            opt
+            for opt in getattr(param, "opts", [])
+            if opt.startswith("--") and opt != "--help"
+        ]
+        names.extend(long_opts)
+    return names
+
+
+def _scan_options_section(text: str) -> str:
+    heading_at = text.find(SCAN_HEADING)
+    assert heading_at != -1, f"missing {SCAN_HEADING!r} in {CLI_REFERENCE}"
+    section = text[heading_at:]
+    options_at = section.find(SCAN_OPTIONS_HEADING)
+    assert options_at != -1, f"missing {SCAN_OPTIONS_HEADING!r} under scan command"
+    section = section[options_at:]
+    next_heading = section.find("\n## ", 1)
+    if next_heading != -1:
+        section = section[:next_heading]
+    return section
+
+
+def test_cli_reference_lists_every_scan_option() -> None:
+    docs = CLI_REFERENCE.read_text(encoding="utf-8")
+    scan_options = _scan_options_section(docs)
+    missing = [
+        option
+        for option in _public_scan_long_options()
+        if option not in scan_options
+    ]
+    assert not missing, (
+        "scan options missing from the CLI reference Options section: "
+        + ", ".join(missing)
+    )
