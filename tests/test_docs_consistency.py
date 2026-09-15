@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from actionscope.cli import main
@@ -48,13 +49,23 @@ def _scan_options_section(text: str) -> str:
     return section
 
 
+def _documented_scan_options(text: str) -> set[str]:
+    options: set[str] = set()
+    for line in _scan_options_section(text).splitlines():
+        if not line.startswith("|"):
+            continue
+        first_cell = line.split("|", 2)[1]
+        options.update(re.findall(r"`(--[a-z0-9-]+)`", first_cell))
+    return options
+
+
 def test_cli_reference_lists_every_scan_option() -> None:
     docs = CLI_REFERENCE.read_text(encoding="utf-8")
-    scan_options = _scan_options_section(docs)
+    documented_options = _documented_scan_options(docs)
     missing = [
         option
         for option in _public_scan_long_options()
-        if f"`{option}`" not in scan_options
+        if option not in documented_options
     ]
     assert not missing, (
         "scan options missing from the CLI reference Options section: "
@@ -65,11 +76,14 @@ def test_cli_reference_lists_every_scan_option() -> None:
 def test_scan_options_section_excludes_later_examples() -> None:
     docs = (
         f"{SCAN_HEADING}\n\n{SCAN_OPTIONS_HEADING}\n\n"
-        "| Flag | Description |\n|---|---|\n| `--listed` | Listed |\n\n"
+        "| Flag | Description |\n|---|---|\n"
+        "| `--listed` | Mentions `--description-only` |\n\n"
         "### Common Scan Examples\n\n`actionscope scan . --example-only`\n"
     )
 
     section = _scan_options_section(docs)
+    documented_options = _documented_scan_options(docs)
 
     assert "--listed" in section
     assert "--example-only" not in section
+    assert documented_options == {"--listed"}
